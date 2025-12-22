@@ -66,7 +66,6 @@ Copy `.env.dist` to `.env`
 
 Install dependencies and run dev mode
 
-```bash
 npm install
 npm run dev
 ```
@@ -106,17 +105,3 @@ Run `docker compose up -d`
 
 It will create a `data/config.yml`, please change all values there and then restart the app. 
 
-### Access control
-
-After first start it creates a file `./data/allowedUsers.yml`. Using yml so you can add comments!
-
-Edit file and restart server for new permissions to take place. Users probably have to logout/login again.
-
-```yaml
-users:
-  12345678901234567: full # full access for this user
-roles:
-  12345678901234569: # Server ID
-    12345678901234570: icons # All users with this role, can add/edit icons
-    12345678901234571: read # All users with this role, can only view the map
-```

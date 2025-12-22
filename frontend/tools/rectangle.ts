@@ -5,6 +5,7 @@ import {Vector} from "ol/layer.js";
 import {Draw} from "ol/interaction.js";
 import {Fill, Stroke, Style, Text} from "ol/style.js";
 import {createBox} from "ol/interaction/Draw.js";
+import { blinkInput } from "../../lib/errorBlink.ts";
 
 class Rectangle {
 
@@ -38,8 +39,18 @@ class Rectangle {
       stopClick: true,
       style: this.styles,
       geometryFunction: createBox(),
+      finishCondition: () => {
+      const input = tools.sidebar.notesInput;
+      const value = input.value;
+      if (value !== undefined && value !== null && value.trim() !== '') {
+        return true;
+      }
+      blinkInput(input);
+      return false;
+    }
     });
     this.draw.on('drawstart', (event) => {
+      
       event.feature.set('type', 'rectangle', true)
       event.feature.set('color', tools.sidebar.colorInput.value + this.opacity, true)
       event.feature.set('secondary-color', tools.sidebar.secondaryColorInput.value + this.opacity)
@@ -58,6 +69,8 @@ class Rectangle {
     this.draw.on('drawabort', () => {
       this.sketchFeature = null
     })
+    
+      
 
     this.rectangleStyle = new Style({
       stroke: new Stroke({

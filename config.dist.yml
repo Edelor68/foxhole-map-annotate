@@ -1,14 +1,17 @@
 access:
   users: {}
   roles: {}
+  discords:
+  "WUH":
+    id: "735418874102677514"
 
 shard:
   name: Able
   url: war-service-live.foxholeservices.com
 
 discord:
-  key: ''
-  secret: ''
+  key: "1452674633588539637"
+  secret: "JtGuecJ0GphWF3aTM_4H0MqKgyOMzHbW"
 
 basic:
   url: http://localhost:3000

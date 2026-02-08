@@ -196,6 +196,8 @@ const publicWss = new WebSocketServer({ clientTracking: false, noServer: true })
 const clients = new Map<string, WebSocket>();
 const publicClients = new Map<string, WebSocket>();
 const loginChecker = new Map<string, NodeJS.Timeout>();
+const userConnections = new Map<string, number>();
+
 
 setTimeout(conquerUpdater, 10_000);
 
@@ -268,6 +270,12 @@ wss.on("connection", (ws: WebSocket, request: any) => {
   clients.set(wsId, ws);
 
   /* ---------------- login checker ---------------- */
+
+  userConnections.set(
+    userId,
+    (userConnections.get(userId) ?? 0) + 1
+  );
+
 
   if (!loginChecker.has(userId)) {
     const loginCheckFunction = () => {
@@ -657,16 +665,26 @@ wss.on("connection", (ws: WebSocket, request: any) => {
     }
   });
 
-  
 
   ws.on("close", () => {
     clients.delete(wsId);
-    const timeout = loginChecker.get(userId);
-    if (timeout) {
-      clearTimeout(timeout);
-      loginChecker.delete(userId);
+    publicClients.delete(wsId);
+
+    const count = (userConnections.get(userId) ?? 1) - 1;
+
+    if (count <= 0) {
+      userConnections.delete(userId);
+
+      const timeout = loginChecker.get(userId);
+      if (timeout) {
+        clearTimeout(timeout);
+        loginChecker.delete(userId);
+      }
+    } else {
+      userConnections.set(userId, count);
     }
   });
+
 });
 
 draftStatus.on("draftUpdate", (data: DraftData) => {

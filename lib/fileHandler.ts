@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { MongoClient } from "mongodb";
 
 const timers: Record<string, string> = {};
 
@@ -24,4 +25,60 @@ export function delayedSave(file: string, data: unknown, delay: number = 5000, f
       delete timers[file];
     }
   }, delay);
+}
+
+const client = new MongoClient("mongodb://localhost:27017");
+
+export async function connectDB() {
+  await client.connect();
+  return client.db("WarEx");
+}
+
+const db = await connectDB();
+
+export async function addDocumentToDB(collection: string, data: unknown) {
+  try {
+    const col = db.collection(collection);
+    await col.insertOne(data);
+  } catch (err) {
+    console.error("Error saving to DB:", err);
+  }
+}
+
+export async function updateDocumentInDB(collection: string, query: Record<string, unknown>, update: Record<string, unknown>) {
+  try {
+    const col = db.collection(collection);
+    await col.updateOne(query, { $set: update });
+  } catch (err) {
+    console.error("Error updating DB:", err);
+  }
+}
+
+export async function deleteDocumentFromDB(collection: string, query: Record<string, unknown>) {
+  try {
+    const col = db.collection(collection);
+    await col.deleteOne(query);
+  } catch (err) {
+    console.error("Error deleting from DB:", err);
+  }
+}
+
+export async function getDocumentFromDB(collection: string, query: Record<string, unknown>) {
+  try {
+    const col = db.collection(collection);
+    return await col.find(query).toArray();
+  } catch (err) {
+    console.error("Error getting from DB:", err);
+    return null;
+  }
+}
+
+export async function getCollectionFromDB(collection: string) {
+  try {
+    const col = db.collection(collection);
+    return await col;
+  } catch (err) {
+    console.error("Error getting collection from DB:", err);
+    return null;
+  }
 }

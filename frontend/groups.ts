@@ -47,7 +47,7 @@ class Groups {
 
     list.innerHTML = "";
     panels.querySelectorAll(".tab-pane[data-group-id]").forEach(p => p.remove());
-    for (const group of Object.values(this.groupsData.groups)) {
+    for (const group of this.groupsData) {
       const button = this.createGroupButton(group);
       const panel = this.createGroupPanel(group, template);
 
@@ -79,7 +79,7 @@ class Groups {
     btn.textContent = group.name;
     btn.type = "button";
     btn.dataset.bsToggle = "list";
-    btn.dataset.bsTarget = `#group-${group.id}`;
+    btn.dataset.bsTarget = `#group-${group._id}`;
 
     btn.addEventListener("click", () => {
       document.getElementById("create-group")?.classList.remove("active");
@@ -96,8 +96,8 @@ class Groups {
     const fragment = template.content.cloneNode(true) as DocumentFragment;
     const root = fragment.querySelector(".tab-pane") as HTMLElement;
 
-    root.id = `group-${group.id}`;
-    root.dataset.groupId = group.id;
+    root.id = `group-${group._id}`;
+    root.dataset.groupId = group._id;
 
     this.setupGroupName(group, root);
     this.setupDeleteGroup(group, root);
@@ -124,7 +124,7 @@ class Groups {
         el.textContent = newName;
       }
 
-      await this.updateGroup(group.id, { name: newName });
+      await this.updateGroup(group._id, { name: newName });
       title.textContent = newName;
     });
   }
@@ -161,7 +161,7 @@ class Groups {
       return false;
     }
     
-    const exists = Object.values(this.groupsData.groups).some(
+    const exists = this.groupsData.some(
       g => g.name.toLowerCase() === name.toLowerCase()
     );
 
@@ -188,7 +188,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData.groups?.[groupId];
+    const group = this.groupsData[groupId];
     if (!group) return;
 
     const memberIdInput = root.querySelector<HTMLInputElement>(".add-member")!;
@@ -215,7 +215,7 @@ class Groups {
     memberIdInput.value = "";
     noteInput.value = "";
 
-    const updatedGroup = this.groupsData.groups[groupId];
+    const updatedGroup = this.groupsData[groupId];
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -256,7 +256,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData.groups?.[groupId];
+    const group = this.groupsData[groupId];
     if (!group) return;
 
     const item = btn.closest("li") as HTMLElement;
@@ -269,7 +269,7 @@ class Groups {
       individual_members: group.individual_members,
     });
 
-    const updatedGroup = this.groupsData.groups[groupId];
+    const updatedGroup = this.groupsData[groupId];
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -285,7 +285,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData.groups?.[groupId];
+    const group = this.groupsData[groupId];
     if (!group) return;
 
     const roleId = root.querySelector<HTMLInputElement>(".add-role")!;
@@ -311,7 +311,7 @@ class Groups {
     serverId.value = "";
     note.value = "";
 
-    const updatedGroup = this.groupsData.groups[groupId];
+    const updatedGroup = this.groupsData[groupId];
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -353,7 +353,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData.groups?.[groupId];
+    const group = this.groupsData[groupId];
     if (!group) return;
 
     const item = btn.closest("li") as HTMLElement;
@@ -365,12 +365,12 @@ class Groups {
     await this.updateGroup(groupId, {
       discord_roles: group.discord_roles,
     });
-    if (!this.groupsData?.groups) {
+    if (!this.groupsData) {
       console.error("groupsData corrupted", this.groupsData);
       return;
     }
 
-    const updatedGroup = this.groupsData.groups[groupId];
+    const updatedGroup = this.groupsData[groupId];
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -390,20 +390,19 @@ class Groups {
     });
     const updated = await res.json();
 
-    if (!updated?.groups) {
+    if (!updated) {
       console.error("Invalid groups response", updated);
       return;
     }
 
-    this.groupsData.groups = updated.groups;
-    this.groupsData.hash = updated.hash;
+    this.groupsData = updated;
   }
 
   setupDeleteGroup(group: Group, root: HTMLElement) {
     root.querySelector(".delete-group-btn")!.addEventListener("click", async () => {
       if (!confirm(`Delete "${group.name}" permanently?`)) return;
 
-      const res = await fetch(`/api/groups/${group.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/groups/${group._id}`, { method: "DELETE" });
       this.groupsData = await res.json();
       this.renderGroups();
     });

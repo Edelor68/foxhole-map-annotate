@@ -51,9 +51,11 @@ import type { HexName, WarEvent, WarStatusData } from "./lib/warapi.js";
 
 import Discord from "./lib/discord.js";
 
-import { getGroupsFile, getUserMemberships } from "./lib/Groups/saveGroups.ts";
+import { getUserMemberships } from "./lib/Groups/saveGroups.ts";
 import type { Group } from "./lib/Groups/types.ts";
 import { recomputeMemberships } from "./lib/Groups/groupMemberships.ts";
+
+import { getDocumentFromDB } from "./lib/fileHandler.ts";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -259,7 +261,6 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
   const username: string = request.session.user;
   const userId: string = request.session.userId;
-  const groups = getGroupsFile().groups;
 
   let discordId: string | null = request.session.discordId ?? null;
   let activeGroupId: string | null = null;
@@ -269,7 +270,6 @@ wss.on("connection", (ws: WebSocket, request: any) => {
   const wsId = randomUUID();
   clients.set(wsId, ws);
 
-  recomputeMemberships(request.session, userId);
 
   /* ---------------- login checker ---------------- */
 
@@ -313,29 +313,42 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
   /* ---------------- init message ---------------- */
 
-  ws.send(
-    JSON.stringify({
-      type: "init",
-      data: {
-        acl,
-        version: process.env.COMMIT_HASH,
-        warStatus: warapi.warData.status,
-        featureHash: features.hash,
-        discordId,
-        userGroups: getUserMemberships(userId),
-      },
-    } as PrivateWebSocketOutgoingTraffic<"init">)
-  );
+  (async () => {
+    try {
+      const memberships = await getUserMemberships(userId);
+      const userGroups = (memberships ?? []).map(g => g.id);
+
+      let discordId: string | null = request.session.discordId ?? null;
+      let acl: Access = request.session.acl;
+
+      ws.send(JSON.stringify({
+        type: "init",
+        data: {
+          acl,
+          version: process.env.COMMIT_HASH,
+          warStatus: warapi.warData.status,
+          featureHash: features.hash,
+          discordId,
+          userGroups
+        },
+      }));
+
+      await recomputeMemberships(request.session, userId);
+
+    } catch (err) {
+      console.error("WebSocket init error:", err);
+      ws.close();
+    }
+  })();
 
   /* ---------------- message handler ---------------- */
 
-  ws.on("message", message => {
+  ws.on("message", async (message) => {
     const content = JSON.parse(
       message.toString()
     ) as PrivateWebSocketIncomingTraffic;
 
     const oldHash = features.hash;
-    const userGroups = getUserMemberships(userId).map(g => g.id);
 
     switch (content.type) {
       case "init": {
@@ -376,10 +389,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       case "setActiveGroup": {
         const { groupId } = content.data;
-        if (
-          groupId === null ||
-          groups[groupId]?.memberships?.some(m => m.userId === userId)
-        ) {
+        const group = getDocumentFromDB("Groups", {_id: groupId})
+        if (groupId === null || group.memberships?.some(m => m.userId === userId)) {
           activeGroupId = groupId;
         }
         break;
@@ -391,13 +402,15 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_ADD, feature)) return;
 
+        const group = getDocumentFromDB ("Groups", {_id: activeGroupId}) as Group | null;
+
         feature.id = randomUUID();
         feature.properties.id = feature.id;
         feature.properties.user = username;
         feature.properties.userId = userId;
         feature.properties.discordId = discordId;
         feature.properties.groupId = activeGroupId ?? undefined;
-        feature.properties.displayName = groups[activeGroupId]?.name ?? username;
+        feature.properties.displayName = group?.name ?? username;
         feature.properties.time = new Date().toISOString();
         feature.properties.notes = sanitizeHtml(feature.properties.notes, sanitizeOptions);
         if (feature.properties.color) {
@@ -430,6 +443,9 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
         for (const existing of features.features) {
           if (existing.properties.id === content.data.properties.id) {
+            const memberships = await getUserMemberships(userId);
+            const userGroups = (memberships ?? []).map(g => g.id);
+            console.log(userGroups);
             if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_EDIT, existing, userGroups)) return;
 
             existing.properties = content.data.properties;
@@ -497,6 +513,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         );
 
         if (!feature) return;
+        const memberships = await getUserMemberships(userId);
+        const userGroups = (memberships ?? []).map(g => g.id);
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_DELETE, feature, userGroups)) return;
 
         features.features = features.features.filter(f => {

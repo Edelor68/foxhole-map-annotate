@@ -3,7 +3,7 @@ import {
   addGroup,
   updateGroup,
   deleteGroup,
-  getUsersGroups,
+  getUserGroups,
 } from "../../lib/Groups/saveGroups.ts";
 
 const router = Router();
@@ -18,7 +18,7 @@ router.get("/", (req, res) => {
     return res.sendStatus(401);
   }
 
-  res.json(getUsersGroups(req.session.userId));
+  res.json(getUserGroups(req.session.userId));
 });
 
 /* =========================

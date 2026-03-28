@@ -1,5 +1,6 @@
 
 export function setUserGroups(userGroups, activeGroupId, onChange) {
+  console.log("Setting user groups:", userGroups, "Active group:", activeGroupId);
   const groupsList = document.getElementById('user-groups-list');
   const currentText = document.getElementById('current-group');
   const username = document.getElementById('discord-username')?.textContent ?? 'User';

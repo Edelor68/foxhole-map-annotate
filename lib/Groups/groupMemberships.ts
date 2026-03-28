@@ -1,12 +1,13 @@
 import discord from "../discord.js";
 import {
-  getGroupsFile,
   setUserMembershipForGroup,
-  saveAllGroups,
-  getGroup
 } from "./saveGroups.ts";
 import type { GroupMembership } from "../lib/Groups/types.ts";
 import config from "../config.js";
+import { 
+  getCollectionFromDB,
+  getDocumentFromDB,
+} from "../fileHandler.ts";
 
 /* ---------- recompute ---------- */
 
@@ -14,68 +15,66 @@ export async function recomputeMemberships(session, userId) {
 
   if (!userId) throw new Error("userId is undefined");
 
-  const file = getGroupsFile();
+  const groups = await getCollectionFromDB("groups");
   const guildRoles = await fetchUserDiscordRoles(session);
+  const guildRoleSets = Object.fromEntries(
+    Object.entries(guildRoles).map(([server, roles]) => [
+      server,
+      new Set(roles)
+    ])
+  );
 
-  for (const group of Object.values(file.groups)) {
+  for await (const group of groups?.find({}, { projection: { _id: 1, individual_members: 1, discord_roles: 1 } })) {
     let isMember = false;
-    let hasGuildId = false;
-    let hasRoleIds = false;
+    let sourceTemp = false;
+    
 
     /* ----- individual members ----- */
     if (group.individual_members) {
-      isMember = Object.values(group.individual_members)
-        .some(m => m.id === userId);
+      isMember = Object.values(group.individual_members).some(m => m.id === userId);
+      if (isMember) {
+        source = "individual";
+      }
     }
 
-    /* ----- discord roles ----- */
+    // ----- Discord roles -----
     if (!isMember && group.discord_roles && guildRoles) {
-      isMember = Object.values(group.discord_roles).some(roleEntry => {
-        const rolesInGuild = guildRoles[roleEntry.server];
-        hasGuildId = roleEntry.server;
-        hasRoleIds = rolesInGuild;
-        return rolesInGuild?.includes(roleEntry.role);
-      });
+      for (const { server, role } of Object.values(group.discord_roles)) {
+        const rolesInGuild = guildRoleSets[server]; 
+        if (rolesInGuild?.has(role)) {
+          isMember = true;
+          source = { guildId: server, roleId: role }; 
+          break; 
+        }
+      }
     }
 
     const membership: GroupMembership | null = isMember
       ? {
+          groupId: group._id.toString(),
           userId,
-          source: "discord",
-          discord: {
-            guildId: hasGuildId,
-            roleIds: hasRoleIds,
-          },
+          source: sourceTemp,
+          verifiedAt: Date.now(),
+          membershipStale: false,
         }
       : null;
 
-    setUserMembershipForGroup(group.id, userId, membership);
+    setUserMembershipForGroup(membership);
   }
 
 }
 
-
 export async function recomputeMembershipsForGroup(session, groupId: string) {
-  const group = getGroup(groupId);
+  const memberships = getDocumentFromDB("Memberships", { "groupId": groupId });
   if (!group) return;
 
   const affectedUsers = new Set<string>();
 
-  // individual members
-  for (const member of Object.values(group.individual_members ?? {})) {
-    if (typeof member.id === "string" && member.id.length > 0) {
-      affectedUsers.add(member.id);
-    }
-  }
-
-  // existing memberships
   for (const m of group.memberships ?? []) {
     if (typeof m.userId === "string" && m.userId.length > 0) {
       affectedUsers.add(m.userId);
     }
   }
-
-  // now recompute each user
 
   for (const userId of affectedUsers) {
     await recomputeMemberships(session, userId);
@@ -85,12 +84,19 @@ export async function recomputeMembershipsForGroup(session, groupId: string) {
 /* ---------- discord ---------- */
 
 async function fetchUserDiscordRoles(session) {
+
   const rolesByGuild: Record<string, string[]> = {};
 
-  const file = getGroupsFile();
+  const groupsCollection = await getCollectionFromDB("groups");
 
-  const guilds = file.groups ? Object.values(file.groups).flatMap(g => g.discord_roles ? Object.values(g.discord_roles).map(r => r.server) : []) : [];
-  const uniqueGuilds = Array.from(new Set(guilds));
+  const allServers = await groupsCollection.aggregate([
+    { $project: { discord_roles: 1 } }, // only get discord_roles
+    { $project: { servers: { $objectToArray: "$discord_roles" } } },
+    { $unwind: "$servers" }, // flatten each role
+    { $group: { _id: null, allServers: { $addToSet: "$servers.v.server" } } }
+  ]).toArray();
+
+  const uniqueGuilds = allServers[0]?.allServers ?? [];
 
   for (const guildId of uniqueGuilds) {
     const info = await discord.getGuildInformation(session, guildId);

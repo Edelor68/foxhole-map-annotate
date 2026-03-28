@@ -4,7 +4,6 @@ export interface GroupsFile {
 }
 
 export interface Group {
-  id: string;
   name: string;
   creator: string;
 
@@ -18,8 +17,6 @@ export interface Group {
 
   discord_roles?: Record<string, DiscordRole>;
 
-  memberships?: Record<string, GroupMembership>[];
-
   permissions?: Record<string, boolean>;
 }
 
@@ -31,7 +28,11 @@ export interface DiscordRole {
 
 export interface GroupMembership {
   userId: string;
-  source: "discord" | "manual";
+  source: {
+    guildId: string;
+    roleIds: string[];
+  }
+  | "individual";
 
   verifiedAt: number; // Date.now() ms
   membershipStale: boolean;

@@ -315,8 +315,9 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
   (async () => {
     try {
-      const memberships = await getUserMemberships(userId);
-      const userGroups = (memberships ?? []).map(g => g.id);
+
+      await recomputeMemberships(request.session, userId);
+      const userGroups = await getUserMemberships(userId);
 
       let discordId: string | null = request.session.discordId ?? null;
       let acl: Access = request.session.acl;
@@ -333,7 +334,6 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         },
       }));
 
-      await recomputeMemberships(request.session, userId);
 
     } catch (err) {
       console.error("WebSocket init error:", err);
@@ -389,8 +389,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       case "setActiveGroup": {
         const { groupId } = content.data;
-        const group = getDocumentFromDB("Groups", {_id: groupId})
-        if (groupId === null || group.memberships?.some(m => m.userId === userId)) {
+        const membership = await getDocumentFromDB("Memberships", {_id: groupId, userID: userId}) as Group | null;
+        if (groupId === null || membership) {
           activeGroupId = groupId;
         }
         break;
@@ -402,7 +402,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_ADD, feature)) return;
 
-        const group = getDocumentFromDB ("Groups", {_id: activeGroupId}) as Group | null;
+        const group = await getDocumentFromDB ("Groups", {_id: activeGroupId}) as Group | null;
 
         feature.id = randomUUID();
         feature.properties.id = feature.id;
@@ -410,7 +410,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         feature.properties.userId = userId;
         feature.properties.discordId = discordId;
         feature.properties.groupId = activeGroupId ?? undefined;
-        feature.properties.displayName = group?.name ?? username;
+        feature.properties.displayName = group[0]?.name ?? username;
         feature.properties.time = new Date().toISOString();
         feature.properties.notes = sanitizeHtml(feature.properties.notes, sanitizeOptions);
         if (feature.properties.color) {
@@ -445,7 +445,6 @@ wss.on("connection", (ws: WebSocket, request: any) => {
           if (existing.properties.id === content.data.properties.id) {
             const memberships = await getUserMemberships(userId);
             const userGroups = (memberships ?? []).map(g => g.id);
-            console.log(userGroups);
             if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_EDIT, existing, userGroups)) return;
 
             existing.properties = content.data.properties;

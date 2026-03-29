@@ -124,6 +124,7 @@ const discordId = ref(null)
 const adminAccess = ref(false)
 let warStatus = null
 socket.on('init', (data) => {
+  console.log("Init data:", data.userGroups);
   realACL = data.acl
   if (data.warStatus === 'resistance') {
     data.acl = 'read'

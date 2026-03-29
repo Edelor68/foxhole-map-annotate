@@ -3,10 +3,13 @@ import {
   setUserMembershipForGroup,
 } from "./saveGroups.ts";
 import type { GroupMembership } from "../lib/Groups/types.ts";
+import { randomUUID } from "node:crypto"
 import config from "../config.js";
 import { 
   getCollectionFromDB,
   getDocumentFromDB,
+  addDocumentToDB,
+  deleteDocumentFromDB,
 } from "../fileHandler.ts";
 
 /* ---------- recompute ---------- */
@@ -15,7 +18,8 @@ export async function recomputeMemberships(session, userId) {
 
   if (!userId) throw new Error("userId is undefined");
 
-  const groups = await getCollectionFromDB("groups");
+  const groups = await getCollectionFromDB("Groups");
+  const memberships = await getCollectionFromDB("Memberships");
   const guildRoles = await fetchUserDiscordRoles(session);
   const guildRoleSets = Object.fromEntries(
     Object.entries(guildRoles).map(([server, roles]) => [
@@ -23,17 +27,18 @@ export async function recomputeMemberships(session, userId) {
       new Set(roles)
     ])
   );
-
+  
   for await (const group of groups?.find({}, { projection: { _id: 1, individual_members: 1, discord_roles: 1 } })) {
     let isMember = false;
     let sourceTemp = false;
     
-
+    let membershipOld = await memberships?.findOne({ groupId: group._id.toString(), _id: userId });
+    
     /* ----- individual members ----- */
     if (group.individual_members) {
-      isMember = Object.values(group.individual_members).some(m => m.id === userId);
+      isMember = Object.keys(group.individual_members).includes(userId);
       if (isMember) {
-        source = "individual";
+        sourceTemp = "individual";
       }
     }
 
@@ -49,28 +54,28 @@ export async function recomputeMemberships(session, userId) {
       }
     }
 
-    const membership: GroupMembership | null = isMember
-      ? {
+    if (isMember && !membershipOld) {
+      addDocumentToDB("Memberships", {
+          _id: randomUUID(),
+          userID: userId,
           groupId: group._id.toString(),
-          userId,
+          groupName: group.name,
           source: sourceTemp,
-          verifiedAt: Date.now(),
-          membershipStale: false,
         }
-      : null;
-
-    setUserMembershipForGroup(membership);
+      )
+    } else if (!isMember && membershipOld && membershipOld.source !== "creator") {
+      deleteDocumentFromDB("Memberships", membershipOld);
+    }
   }
-
 }
 
 export async function recomputeMembershipsForGroup(session, groupId: string) {
-  const memberships = getDocumentFromDB("Memberships", { "groupId": groupId });
-  if (!group) return;
+  const memberships = await getDocumentFromDB("Memberships", { "groupId": groupId });
+  if (!memberships) return;
 
   const affectedUsers = new Set<string>();
 
-  for (const m of group.memberships ?? []) {
+  for (const m of memberships) {
     if (typeof m.userId === "string" && m.userId.length > 0) {
       affectedUsers.add(m.userId);
     }
@@ -87,7 +92,7 @@ async function fetchUserDiscordRoles(session) {
 
   const rolesByGuild: Record<string, string[]> = {};
 
-  const groupsCollection = await getCollectionFromDB("groups");
+  const groupsCollection = await getCollectionFromDB("Groups");
 
   const allServers = await groupsCollection.aggregate([
     { $project: { discord_roles: 1 } }, // only get discord_roles

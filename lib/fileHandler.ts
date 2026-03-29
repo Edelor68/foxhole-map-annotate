@@ -48,7 +48,8 @@ export async function addDocumentToDB(collection: string, data: unknown) {
 export async function updateDocumentInDB(collection: string, query: Record<string, unknown>, update: Record<string, unknown>) {
   try {
     const col = db.collection(collection);
-    await col.updateOne(query, { $set: update });
+
+    await col.updateOne(query, update);
   } catch (err) {
     console.error("Error updating DB:", err);
   }

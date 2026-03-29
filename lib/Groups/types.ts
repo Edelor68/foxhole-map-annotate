@@ -10,7 +10,6 @@ export interface Group {
   individual_members?: Record<
     string,
     {
-      id: string;
       username?: string;
     }
   >;

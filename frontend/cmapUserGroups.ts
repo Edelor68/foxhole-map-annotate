@@ -1,6 +1,5 @@
 
 export function setUserGroups(userGroups, activeGroupId, onChange) {
-  console.log("Setting user groups:", userGroups, "Active group:", activeGroupId);
   const groupsList = document.getElementById('user-groups-list');
   const currentText = document.getElementById('current-group');
   const username = document.getElementById('discord-username')?.textContent ?? 'User';
@@ -53,7 +52,7 @@ export function setUserGroups(userGroups, activeGroupId, onChange) {
 
   // ---- GROUP ENTRIES ----
   for (const group of userGroups) {
-    const entry = createEntry(group.id, group.name);
+    const entry = createEntry(group.groupId, group.groupName);
     groupsList.appendChild(entry);
   }
 
@@ -64,7 +63,7 @@ export function setUserGroups(userGroups, activeGroupId, onChange) {
     const active =
       activeGroupId === 'user'
         ? username
-        : userGroups.find(g => g.id === activeGroupId)?.name;
+        : userGroups.find(g => g.groupId === activeGroupId)?.groupName;
 
     if (active) {
       activate(activeGroupId, active);

@@ -1,6 +1,7 @@
 import { blinkInput } from "./tools/errorBlink";
 import type { Group } from "../lib/Groups/types.ts";
 
+
 type GroupsResponse = {
   groups: Record<string, Group>;
   hash: string;
@@ -29,9 +30,17 @@ class Groups {
 
   async loadGroups() {
     const res = await fetch("/api/groups");
-    return res.json();
+    return await res.json() as GroupsResponse;
   }
 
+  findGroupById(groupId: string): Group | null {
+    for (const group of this.groupsData) {
+      if (group._id === groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
   /* =======================
      Rendering
   ======================= */
@@ -124,7 +133,7 @@ class Groups {
         el.textContent = newName;
       }
 
-      await this.updateGroup(group._id, { name: newName });
+      await this.updateGroup(group._id, "new_group_name", { name: newName });
       title.textContent = newName;
     });
   }
@@ -188,7 +197,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData[groupId];
+    const group = this.findGroupById(groupId);
     if (!group) return;
 
     const memberIdInput = root.querySelector<HTMLInputElement>(".add-member")!;
@@ -202,20 +211,16 @@ class Groups {
       return;
     }
 
-    await this.updateGroup(groupId, {
-      individual_members: {
-        ...(group.individual_members ?? {}),
-        [memberId]: {
-          id: memberId,
+    await this.updateGroup(groupId, "add_member", {
+      [`individual_members.${memberId}`]: {
           username: noteInput.value.trim(),
-        },
-      },
+      }
     });
 
     memberIdInput.value = "";
     noteInput.value = "";
 
-    const updatedGroup = this.groupsData[groupId];
+    const updatedGroup = this.findGroupById(groupId);
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -256,7 +261,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData[groupId];
+    const group = this.findGroupById(groupId);
     if (!group) return;
 
     const item = btn.closest("li") as HTMLElement;
@@ -265,11 +270,11 @@ class Groups {
 
     delete group.individual_members?.[memberId];
 
-    await this.updateGroup(groupId, {
-      individual_members: group.individual_members,
+    await this.updateGroup(groupId, "remove_member", {
+      [`individual_members.${memberId}`]: ""
     });
 
-    const updatedGroup = this.groupsData[groupId];
+    const updatedGroup = this.findGroupById(groupId);
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -285,7 +290,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData[groupId];
+    const group = this.findGroupById(groupId);
     if (!group) return;
 
     const roleId = root.querySelector<HTMLInputElement>(".add-role")!;
@@ -296,22 +301,18 @@ class Groups {
     const serverIdVal = serverId.value.trim();
     if (!roleIdVal || !serverIdVal) return;
 
-    await this.updateGroup(groupId, {
-      discord_roles: {
-        ...(group.discord_roles ?? {}),
-        [roleIdVal]: {
-          role: roleIdVal,
+    await this.updateGroup(groupId, "add_role", {
+      [`discord_roles.${roleIdVal}`]: {
           server: serverIdVal,
           info: note.value.trim(),
-        },
-      },
+      }
     });
 
     roleId.value = "";
     serverId.value = "";
     note.value = "";
 
-    const updatedGroup = this.groupsData[groupId];
+    const updatedGroup = this.findGroupById(groupId);
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -353,7 +354,7 @@ class Groups {
     if (!root) return;
 
     const groupId = root.dataset.groupId!;
-    const group = this.groupsData[groupId];
+    const group = this.findGroupById(groupId);
     if (!group) return;
 
     const item = btn.closest("li") as HTMLElement;
@@ -362,15 +363,15 @@ class Groups {
 
     delete group.discord_roles?.[roleId];
 
-    await this.updateGroup(groupId, {
-      discord_roles: group.discord_roles,
+    await this.updateGroup(groupId, "remove_role", {
+      [`discord_roles.${roleIdVal}`]: ""
     });
     if (!this.groupsData) {
       console.error("groupsData corrupted", this.groupsData);
       return;
     }
 
-    const updatedGroup = this.groupsData[groupId];
+    const updatedGroup = this.findGroupById(groupId);
     const liveRoot = this.getGroupRoot(groupId);
     if (!updatedGroup || !liveRoot) return;
 
@@ -382,10 +383,37 @@ class Groups {
      Actions
   ======================= */
 
-  async updateGroup(groupId: string, body: object) {
+  async addGroup() {
+    const input = document.getElementById("group-name") as HTMLInputElement;
+    const name = input.value.trim();
+
+    if (!name) {
+      blinkInput(input);
+      return;
+    }
+
+    if(!this.validateGroupName(name, input, document.getElementById("create-group-form"))) return
+
+    const res = await fetch("/api/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text(); 
+      console.error("Server error:", text);
+      throw new Error("Request failed");
+    }
+
+    this.groupsData = await res.json();
+    this.renderGroups();
+  }
+
+  async updateGroup(groupId: string, type: string, body: object) {
     const res = await fetch(`/api/groups/${groupId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Update-Type": type },
       body: JSON.stringify(body),
     });
     const updated = await res.json();
@@ -444,27 +472,6 @@ class Groups {
         e.preventDefault();
         await this.addGroup();
       });
-  }
-
-  async addGroup() {
-    const input = document.getElementById("group-name") as HTMLInputElement;
-    const name = input.value.trim();
-
-    if (!name) {
-      blinkInput(input);
-      return;
-    }
-
-    if(!this.validateGroupName(name, input, document.getElementById("create-group-form"))) return
-
-    const res = await fetch("/api/groups", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-
-    this.groupsData = await res.json();
-    this.renderGroups();
   }
 }
 

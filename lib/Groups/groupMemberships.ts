@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto"
 import config from "../config.js";
 import { 
   getCollectionFromDB,
-  getDocumentFromDB,
+  getMultipleDocumentsFromDB,
   addDocumentToDB,
   deleteDocumentFromDB,
 } from "../fileHandler.ts";
@@ -70,7 +70,7 @@ export async function recomputeMemberships(session, userId) {
 }
 
 export async function recomputeMembershipsForGroup(session, groupId: string) {
-  const memberships = await getDocumentFromDB("Memberships", { "groupId": groupId });
+  const memberships = await getMultipleDocumentsFromDB("Memberships", { "groupId": groupId });
   if (!memberships) return;
 
   const affectedUsers = new Set<string>();

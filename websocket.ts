@@ -36,7 +36,6 @@ import eventLog from "./lib/eventLog.js";
 import {
   defaultFeatures,
   loadFeatures,
-  saveFeatures,
 } from "./lib/featureLoader.js";
 
 import type {
@@ -55,7 +54,14 @@ import { getUserMemberships } from "./lib/Groups/saveGroups.ts";
 import type { Group } from "./lib/Groups/types.ts";
 import { recomputeMemberships } from "./lib/Groups/groupMemberships.ts";
 
-import { getDocumentFromDB } from "./lib/fileHandler.ts";
+import { 
+  addDocumentToDB, 
+  deleteDocumentFromDB, 
+  getSingleDocumentFromDB, 
+  getMultipleDocumentsFromDB, 
+  updateDocumentInDB 
+} from "./lib/fileHandler.ts";
+import { get } from "node:http";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -203,7 +209,8 @@ const loginChecker = new Map<string, NodeJS.Timeout>();
 
 setTimeout(conquerUpdater, 10_000);
 
-const features = loadFeatures();
+const features = await loadFeatures();
+console.log(features)
 
 let cachedQueue: QueueObject = {
   queues: {},
@@ -389,7 +396,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       case "setActiveGroup": {
         const { groupId } = content.data;
-        const membership = await getDocumentFromDB("Memberships", {_id: groupId, userID: userId}) as Group | null;
+        const membership = await getMultipleDocumentsFromDB("Memberships", {_id: groupId, userID: userId}) as Group | null;
         if (groupId === null || membership) {
           activeGroupId = groupId;
         }
@@ -399,13 +406,14 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       case "featureAdd": {
         if (warapi.isWarInResistance()) break;
         const feature = content.data;
+        console.log(feature)
 
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_ADD, feature)) return;
 
-        const group = await getDocumentFromDB ("Groups", {_id: activeGroupId}) as Group | null;
+        const group = await getSingleDocumentFromDB("Groups", {_id: activeGroupId}) as Group | null;
 
-        feature.id = randomUUID();
-        feature.properties.id = feature.id;
+        feature._id = randomUUID();
+        feature.properties.id = feature._id;
         feature.properties.user = username;
         feature.properties.userId = userId;
         feature.properties.discordId = discordId;
@@ -431,7 +439,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
           data: feature,
         });
 
-        saveFeatures(features);
+        addDocumentToDB("Features", feature);
         sendUpdateFeature("add", feature, oldHash, features.hash);
         break;
       }
@@ -439,67 +447,32 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       case "featureUpdate": {
         if (warapi.isWarInResistance()) break;
 
-        let edited: UserMapFeature | null = null;
+        const feature = await getSingleDocumentFromDB("Features", {"_id": content.data.properties.id}) as UserMapFeature | null;
+        if (!feature) return;
 
-        for (const existing of features.features) {
-          if (existing.properties.id === content.data.properties.id) {
-            const memberships = await getUserMemberships(userId);
-            const userGroups = (memberships ?? []).map(g => g.id);
-            if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_EDIT, existing, userGroups)) return;
+        const userGroups = await getUserMemberships(userId);
+        if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_EDIT, feature, userGroups)) return;
 
-            existing.properties = content.data.properties;
-            existing.geometry = content.data.geometry;
-
-            if (!existing.properties.discordId) {
-              existing.properties.discordId = discordId;
-            }
-
-            existing.properties.muser = username;
-            existing.properties.muserId = userId;
-            existing.properties.time = new Date().toISOString();
-            existing.properties.notes = sanitizeHtml(
-              existing.properties.notes,
-              sanitizeOptions
-            );
-
-            if (existing.properties.color) {
-              existing.properties.color = sanitizeHtml(
-                existing.properties.color,
-                sanitizeOptionsClan
-              );
-            }
-
-            if (existing.properties.clan) {
-              existing.properties.clan = sanitizeHtml(
-                existing.properties.clan,
-                sanitizeOptionsClan
-              );
-            }
-
-            if (existing.properties.lineType) {
-              existing.properties.lineType = sanitizeHtml(
-                existing.properties.lineType,
-                sanitizeOptionsClan
-              );
-            }
-
-            eventLog.logEvent({
-              type: content.type,
-              user: username,
-              userId,
-              data: content.data,
-            });
-
-            edited = existing;
-            break;
-          }
+        if (!feature.properties.discordId) {
+          feature.properties.discordId = discordId;
         }
 
-        saveFeatures(features);
+        
 
-        if (edited) {
-          sendUpdateFeature("update", edited, oldHash, features.hash);
-        }
+        feature.properties.muser = username;
+        feature.properties.muserId = userId;
+        feature.properties.time = new Date().toISOString();
+
+        eventLog.logEvent({
+          type: content.type,
+          user: username,
+          userId,
+          data: content.data,
+        });
+
+        await updateDocumentInDB("Features", { "_id": content.data.properties.id }, { $set: { geometry: feature.geometry, properties: feature.properties } }  );
+
+        sendUpdateFeature("update", feature, oldHash, features.hash);
 
         break;
       }
@@ -507,28 +480,20 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       case "featureDelete": {
         if (warapi.isWarInResistance()) break;
 
-        const feature = features.features.find(
-          f => f.properties.id === content.data.id
-        );
+        const feature = await getSingleDocumentFromDB("Features", {"_id": content.data.id}) as UserMapFeature | null;
 
         if (!feature) return;
-        const memberships = await getUserMemberships(userId);
-        const userGroups = (memberships ?? []).map(g => g.id);
+        const userGroups = await getUserMemberships(userId);
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_DELETE, feature, userGroups)) return;
 
-        features.features = features.features.filter(f => {
-          if (f.properties.id === content.data.id) {
-            eventLog.logEvent({
-              type: content.type,
-              user: username,
-              userId,
-              data: f,
-            });
-          }
-          return f.properties.id !== content.data.id;
+        eventLog.logEvent({
+          type: content.type,
+          user: username,
+          userId,
+          data: feature,
         });
 
-        saveFeatures(features);
+        await deleteDocumentFromDB("Features", { "_id": content.data.id });
         sendUpdateFeature("delete", feature, oldHash, features.hash);
         break;
       }
@@ -537,69 +502,63 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         if (warapi.isWarInResistance()) break;
         if (!hasAccess(userId, acl, ACL_ACTIONS.DECAY_UPDATE)) return;
 
-        for (const feature of features.features) {
-          if (feature.properties.id === content.data.id) {
-            const time = new Date().toISOString();
-            const newExpireDate = new Date(new Date().getTime() + (feature.properties.expireTime || -(new Date().getTime() + 1))).toISOString()
-            feature.properties.expireDate = newExpireDate
-            feature.properties.time = time;
-            feature.properties.muser = username;
-            feature.properties.muserId = userId;
+        const feature = await getSingleDocumentFromDB("Features", {"_id": content.data.id}) as UserMapFeature | null;
 
-            eventLog.logEvent({
-              type: content.type,
-              user: username,
-              userId,
-              data: content.data,
-            });
+        if (!feature) return;
 
-            sendDataToAll("decayUpdated", {
-              id: feature.properties.id,
-              type: feature.properties.type,
-              time,
-              expireDate: newExpireDate,
-              expireTime: feature.properties.expireTime,
-            });
-          }
-        }
+        const time = new Date().toISOString();
+        const newExpireDate = new Date(new Date().getTime() + (feature.properties.expireTime || -(new Date().getTime() + 1))).toISOString()
+        feature.properties.expireDate = newExpireDate
+        feature.properties.time = time;
+        feature.properties.muser = username;
+        feature.properties.muserId = userId;
 
-        saveFeatures(features);
+        eventLog.logEvent({
+          type: content.type,
+          user: username,
+          userId,
+          data: content.data,
+        });
+
+        sendDataToAll("decayUpdated", {
+          id: feature.properties.id,
+          type: feature.properties.type,
+          time,
+          expireDate: newExpireDate,
+          expireTime: feature.properties.expireTime,
+        });
+
+        await updateDocumentInDB("Features", { "_id": content.data.id }, { $set: { properties: feature.properties } }  )  ;
         break;
       }
 
       case "flag": {
         if (warapi.isWarInResistance()) break;
 
-        let changed = false;
+        const feature = await getSingleDocumentFromDB("Features", {"_id": content.data.id})
+        if (!feature) return;
+        feature.properties.flags ??= [];
 
-        for (const feature of features.features) {
-          if (feature.properties.id === content.data.id) {
-            feature.properties.flags ??= [];
-
-            if (feature.properties.flags.includes(userId)) {
-              feature.properties.flags = feature.properties.flags.filter(f => f !== userId);
-            } else {
-              feature.properties.flags.push(userId);
-            }
-
-            eventLog.logEvent({
-              type: content.type,
-              user: username,
-              userId,
-              data: content.data,
-            });
-
-            sendDataToAll("flagged", {
-              id: feature.properties.id,
-              type: feature.properties.type,
-              flags: feature.properties.flags,
-            });
-
-            changed = true;
-          }
+        if (feature.properties.flags.includes(userId)) {
+          feature.properties.flags = feature.properties.flags.filter(f => f !== userId);
+        } else {
+          feature.properties.flags.push(userId);
         }
 
-        if (changed) saveFeatures(features);
+        eventLog.logEvent({
+          type: content.type,
+          user: username,
+          userId,
+          data: content.data,
+        });
+
+        sendDataToAll("flagged", {
+          id: feature.properties.id,
+          type: feature.properties.type,
+          flags: feature.properties.flags,
+        });
+
+        await updateDocumentInDB("Features", { "_id": content.data.id }, { $set: { "properties.flags": feature.properties.flags } }  )  ;
         break;
       }
 
@@ -607,26 +566,26 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         if (warapi.isWarInResistance()) break;
         if (!hasAccess(userId, acl, ACL_ACTIONS.UNFLAG)) return;
 
-        for (const feature of features.features) {
-          if (feature.properties.id === content.data.id) {
-            feature.properties.flags = [];
+        const feature = await getSingleDocumentFromDB("Features", {"_id": content.data.id});
+        if (!feature) return;
 
-            eventLog.logEvent({
-              type: content.type,
-              user: username,
-              userId,
-              data: content.data,
-            });
+        feature.properties.flags = [];
 
-            sendDataToAll("flagged", {
-              id: feature.properties.id,
-              type: feature.properties.type,
-              flags: [],
-            });
+        eventLog.logEvent({
+          type: content.type,
+          user: username,
+          userId,
+          data: content.data,
+        });
 
-            saveFeatures(features);
-          }
-        }
+        sendDataToAll("flagged", {
+          id: feature.properties.id,
+          type: feature.properties.type,
+          flags: [],
+        });
+
+        await updateDocumentInDB("Features", { "_id": content.data.id }, { $set: { "properties.flags": feature.properties.flags } }  )  ;
+
         break;
       }
 
@@ -808,7 +767,7 @@ function checkExpiredFeatures() {
     }
 
     if (expireDate < now) {
-      features.features = features.features.filter((feature) => {
+      features = features.features.filter((feature) => {
         return feature.properties.id !== featureToCheck.properties.id
       })
       const oldHash = features.hash
@@ -861,10 +820,10 @@ warapi.on(warapi.EVENT_WAR_PREPARE, ({ oldData, newData }) => {
   }
 
   const defaults = defaultFeatures();
-  features.features = features.features.filter(
+  features = features.filter(
     f => f.properties.clan === "World"
   );
-  features.features.push(...defaults.features);
+  features.push(...defaults.features);
 
   saveFeatures(features);
   clearRegions();

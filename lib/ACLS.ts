@@ -84,10 +84,10 @@ export function hasAccess(
     }
     // if its not add, there needs to be a feature and the userIds need to match
     if (
-        !feature || 
-        (feature.properties.userId && 
-        feature.properties.userId !== userId && 
-        userGroups.indexOf(feature.properties.groupId) === -1)
+      !feature || 
+      (feature.properties.userId && 
+      feature.properties.userId !== userId && 
+      !userGroups.some(group => group.groupId === feature.properties.groupId))
     ) {
       return false
     }

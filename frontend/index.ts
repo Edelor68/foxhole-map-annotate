@@ -199,6 +199,7 @@ tools.on(tools.EVENT_ICON_DELETED, (icon) => {
 })
 
 socket.on('allFeatures', (features) => {
+  console.log('Received features:', features)
   const col = geoJson.readFeatures(features)
   const collections = {}
   col.forEach((feature) => {
@@ -229,7 +230,9 @@ socket.on('featureUpdate', ({operation, feature, oldHash, newHash}) => {
     socket.send('getAllFeatures', true)
     return
   }
+  console.log("before", feature);
   feature = geoJson.readFeature(feature)
+  console.log("after", feature);
   tools.emit(tools.EVENT_FEATURE_UPDATED, {operation, feature})
   lastFeatureHash = newHash
 })

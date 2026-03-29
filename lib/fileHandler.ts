@@ -64,10 +64,20 @@ export async function deleteDocumentFromDB(collection: string, query: Record<str
   }
 }
 
-export async function getDocumentFromDB(collection: string, query: Record<string, unknown>) {
+export async function getMultipleDocumentsFromDB(collection: string, query: Record<string, unknown>) {
   try {
     const col = db.collection(collection);
     return await col.find(query).toArray();
+  } catch (err) {
+    console.error("Error getting from DB:", err);
+    return null;
+  }
+}
+
+export async function getSingleDocumentFromDB(collection: string, query: Record<string, unknown>) {
+  try {
+    const col = db.collection(collection);
+    return await col.findOne(query);
   } catch (err) {
     console.error("Error getting from DB:", err);
     return null;

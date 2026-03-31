@@ -62,6 +62,7 @@ import {
   updateDocumentInDB 
 } from "./lib/fileHandler.ts";
 import { get } from "node:http";
+import { hash } from "node:crypto";
 
 /* ------------------------------------------------------------------ */
 /* Types */
@@ -406,7 +407,6 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       case "featureAdd": {
         if (warapi.isWarInResistance()) break;
         const feature = content.data;
-        console.log(feature)
 
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_ADD, feature)) return;
 
@@ -432,6 +432,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         }
 
         features.features.push(feature);
+        features.hash = hash("sha1", JSON.stringify(features.features));
         eventLog.logEvent({
           type: content.type,
           user: username,
@@ -485,6 +486,10 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         if (!feature) return;
         const userGroups = await getUserMemberships(userId);
         if (!hasAccess(userId, acl, ACL_ACTIONS.ICON_DELETE, feature, userGroups)) return;
+
+
+        features.features = features.features.filter(f => f.properties._id !== feature.properties._id);
+        features.hash = hash("sha1", JSON.stringify(features.features));
 
         eventLog.logEvent({
           type: content.type,
@@ -743,12 +748,12 @@ function sendUpdateFeature(
   sendDataToAll("featureUpdate", { operation, feature, oldHash, newHash });
 }
 
-function sendFeatures(client: WebSocket): void {
-  sendData(client, "allFeatures", features);
+async function sendFeatures(client: WebSocket): void {
+  sendData(client, "allFeatures", await loadFeatures());
 }
 
-function sendFeaturesToAll(): void {
-  sendDataToAll("allFeatures", features);
+async function sendFeaturesToAll(): void {
+  sendDataToAll("allFeatures", await loadFeatures());
 }
 
 /* ------------------------------------------------------------------ */
@@ -758,7 +763,7 @@ function sendFeaturesToAll(): void {
 function checkExpiredFeatures() {
   const now = Date.now();
 
-  for (const featureToCheck of features.features) {
+  for (const featureToCheck in features.features) {
 
     const expireDate = new Date(featureToCheck.properties?.expireDate || -1).getTime();
 
@@ -771,8 +776,9 @@ function checkExpiredFeatures() {
         return feature.properties.id !== featureToCheck.properties.id
       })
       const oldHash = features.hash
+      features.hash = hash("sha1", JSON.stringify(features.features));
       sendUpdateFeature('delete', featureToCheck, oldHash, features.hash)
-      saveFeatures(features)
+      deleteDocumentFromDB("Features", { "_id": featureToCheck.properties._id });
     }
   }
 }

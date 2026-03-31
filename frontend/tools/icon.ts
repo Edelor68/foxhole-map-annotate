@@ -1,3 +1,4 @@
+import { get } from "node:http";
 import { Collection } from "ol";
 import { assert } from "ol/asserts.js";
 import { Draw } from "ol/interaction.js";
@@ -145,14 +146,16 @@ class Icon {
       }
     })
     tools.on(tools.EVENT_FEATURE_UPDATED, ({operation, feature}) => {
+      console.log("icon update", operation, feature);
       if (feature.get('type') in this.sources) {
         const type = feature.get('type')
         if (operation === 'add') {
           this.sources[type].addFeature(feature)
+          console.log("add", this.sources[type], feature);
           return
         }
-        console.log(feature);
-        const editFeature = this.sources[type].getFeatureById(feature.values_.id)
+        const editFeature = this.sources[type].getFeatureByUid(feature.ol_uid)
+        console.log("delete", this.sources[type], feature);
         if (operation === 'update') {
           this.sources[type].removeFeature(editFeature)
           this.sources[type].addFeature(feature)

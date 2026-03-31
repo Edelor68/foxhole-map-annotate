@@ -211,7 +211,6 @@ const loginChecker = new Map<string, NodeJS.Timeout>();
 setTimeout(conquerUpdater, 10_000);
 
 const features = await loadFeatures();
-console.log(features)
 
 let cachedQueue: QueueObject = {
   queues: {},
@@ -221,7 +220,6 @@ let cachedQueue: QueueObject = {
 /* ------------------------------------------------------------------ */
 /* sanitize options + queue watcher */
 /* ------------------------------------------------------------------ */
-
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
   allowedTags: ["b", "i", "em", "strong", "a", "p", "img", "video", "source"],
@@ -459,11 +457,18 @@ wss.on("connection", (ws: WebSocket, request: any) => {
           feature.properties.discordId = discordId;
         }
 
-        
-
         feature.properties.muser = username;
         feature.properties.muserId = userId;
         feature.properties.time = new Date().toISOString();
+
+        for (const f of features.features) {
+          if (f.id === feature.id) {
+            f.properties = feature.properties;
+            f.geometry = feature.geometry;
+            break;
+          }
+        }
+        features.hash = hash("sha1", JSON.stringify(features.features));
 
         eventLog.logEvent({
           type: content.type,
@@ -519,6 +524,14 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         feature.properties.muser = username;
         feature.properties.muserId = userId;
 
+        for (const f of features.features) {
+          if (f.id === feature.id) {
+            f.properties = feature.properties;
+            break;
+          }
+        }
+        features.hash = hash("sha1", JSON.stringify(features.features));
+
         eventLog.logEvent({
           type: content.type,
           user: username,
@@ -551,6 +564,14 @@ wss.on("connection", (ws: WebSocket, request: any) => {
           feature.properties.flags.push(userId);
         }
 
+        for (const f of features.features) {
+          if (f.id === feature.id) {
+            f.properties.flags = feature.properties.flags;
+            break;
+          }
+        }
+        features.hash = hash("sha1", JSON.stringify(features.features));
+
         eventLog.logEvent({
           type: content.type,
           user: username,
@@ -576,6 +597,14 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         if (!feature) return;
 
         feature.properties.flags = [];
+
+        for (const f of features.features) {
+          if (f.id === feature.id) {
+            f.properties.flags = feature.properties.flags;
+            break;
+          }
+        }
+        features.hash = hash("sha1", JSON.stringify(features.features));
 
         eventLog.logEvent({
           type: content.type,
@@ -750,11 +779,11 @@ function sendUpdateFeature(
 }
 
 async function sendFeatures(client: WebSocket): void {
-  sendData(client, "allFeatures", await loadFeatures());
+  sendData(client, "allFeatures", features);
 }
 
 async function sendFeaturesToAll(): void {
-  sendDataToAll("allFeatures", await loadFeatures());
+  sendDataToAll("allFeatures", features);
 }
 
 /* ------------------------------------------------------------------ */
@@ -786,6 +815,7 @@ function checkExpiredFeatures() {
 
 async function conquerUpdater(): Promise<void> {
   const oldVersion = getConquerStatusVersion();
+  features = loadFeatures() as unknown as UserMapFeatures;
 
   await warapi.warDataUpdate()
     .then(updateMap)

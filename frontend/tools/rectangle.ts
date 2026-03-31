@@ -120,7 +120,7 @@ class Rectangle {
           this.source.addFeature(feature)
           return
         }
-        const editFeature = this.source.getFeatureById(feature.values_.id)
+        const editFeature = this.source.getFeatureById(feature.getId())
         if (operation === 'update') {
           this.source.removeFeature(editFeature)
           this.source.addFeature(feature)

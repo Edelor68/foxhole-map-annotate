@@ -146,16 +146,13 @@ class Icon {
       }
     })
     tools.on(tools.EVENT_FEATURE_UPDATED, ({operation, feature}) => {
-      console.log("icon update", operation, feature);
       if (feature.get('type') in this.sources) {
         const type = feature.get('type')
         if (operation === 'add') {
           this.sources[type].addFeature(feature)
-          console.log("add", this.sources[type], feature);
           return
         }
-        const editFeature = this.sources[type].getFeatureByid(feature) //Feature doesnt have id
-        console.log("delete", this.sources[type], feature);
+        const editFeature = this.sources[type].getFeatureById(feature.getId())
         if (operation === 'update') {
           this.sources[type].removeFeature(editFeature)
           this.sources[type].addFeature(feature)

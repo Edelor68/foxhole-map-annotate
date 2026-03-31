@@ -413,6 +413,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         const group = await getSingleDocumentFromDB("Groups", {_id: activeGroupId}) as Group | null;
 
         feature._id = randomUUID();
+        feature.id = feature._id;
         feature.properties.id = feature._id;
         feature.properties.user = username;
         feature.properties.userId = userId;

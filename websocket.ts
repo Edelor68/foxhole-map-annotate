@@ -815,7 +815,9 @@ function checkExpiredFeatures() {
 
 async function conquerUpdater(): Promise<void> {
   const oldVersion = getConquerStatusVersion();
-  features = loadFeatures() as unknown as UserMapFeatures;
+  const featuresNew = await loadFeatures() as unknown as UserMapFeatures;
+  features.features = featuresNew.features;
+  features.hash = featuresNew.hash;
 
   await warapi.warDataUpdate()
     .then(updateMap)

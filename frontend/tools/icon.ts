@@ -154,7 +154,7 @@ class Icon {
           console.log("add", this.sources[type], feature);
           return
         }
-        const editFeature = this.sources[type].getFeatureByUid(feature.ol_uid)
+        const editFeature = this.sources[type].getFeatureByid(feature) //Feature doesnt have id
         console.log("delete", this.sources[type], feature);
         if (operation === 'update') {
           this.sources[type].removeFeature(editFeature)

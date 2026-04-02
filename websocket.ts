@@ -417,7 +417,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         feature.properties.userId = userId;
         feature.properties.discordId = discordId;
         feature.properties.groupId = activeGroupId ?? undefined;
-        feature.properties.displayName = group[0]?.name ?? username;
+        feature.properties.displayName = group?.name ?? username;
         feature.properties.time = new Date().toISOString();
         feature.properties.notes = sanitizeHtml(feature.properties.notes, sanitizeOptions);
         if (feature.properties.color) {
@@ -793,7 +793,7 @@ async function sendFeaturesToAll(): void {
 function checkExpiredFeatures() {
   const now = Date.now();
 
-  for (const featureToCheck in features.features) {
+  for (const featureToCheck of features.features) {
 
     const expireDate = new Date(featureToCheck.properties?.expireDate || -1).getTime();
 
@@ -802,13 +802,13 @@ function checkExpiredFeatures() {
     }
 
     if (expireDate < now) {
-      features = features.features.filter((feature) => {
+      features.features = features.features.filter((feature) => {
         return feature.properties.id !== featureToCheck.properties.id
       })
       const oldHash = features.hash
       features.hash = hash("sha1", JSON.stringify(features.features));
+      deleteDocumentFromDB("Features", { "_id": featureToCheck.id });
       sendUpdateFeature('delete', featureToCheck, oldHash, features.hash)
-      deleteDocumentFromDB("Features", { "_id": featureToCheck.properties._id });
     }
   }
 }

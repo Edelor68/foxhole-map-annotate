@@ -230,7 +230,6 @@ socket.on('featureUpdate', ({operation, feature, oldHash, newHash}) => {
     socket.send('getAllFeatures', true)
     return
   }
-  console.log("index", feature);
   feature = geoJson.readFeature(feature)
   tools.emit(tools.EVENT_FEATURE_UPDATED, {operation, feature})
   lastFeatureHash = newHash
